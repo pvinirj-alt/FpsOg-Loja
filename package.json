@@ -1,0 +1,17 @@
+{
+  "name": "discord-sales-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bot de vendas para Discord com entrega automática de keys",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}
