@@ -1,6 +1,8 @@
 'use strict';
+const path = require('node:path');
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
@@ -76,22 +78,32 @@ function createBot({ client, cfg, db, license }) {
   /* ───────────── mensagens ───────────── */
 
   function panelPayload() {
+    const imageFile = path.join(__dirname, '..', 'assets', 'fpsog-external.png');
     const embed = new EmbedBuilder()
       .setColor(COLOR.main)
-      .setTitle(`${cfg.productName}`)
+      .setTitle("FpsOg' Community")
       .setDescription(
         [
-          FEATURES.map((f) => `**${f.title}**\n${f.items.map((i) => `• ${i}`).join('\n')}`).join('\n\n'),
+          FEATURES.map((f) => `**${f.title}**\n${f.items.map((i) => `> ${i}`).join('\n')}`).join('\n\n'),
           '',
           '**COMO COMPRAR**',
           '• Escolha o plano no menu abaixo',
-          '• Um canal privado será criado só para você, pague via **Pix**',
+          '• Um canal privado será criado só para você; pague via **Pix**',
           '• Após a aprovação, a **key chega no seu privado**',
           '',
           '> O tempo do plano só começa a contar quando você ativa a key pela primeira vez.',
         ].join('\n'),
       );
-    if (cfg.panelImageUrl) embed.setImage(cfg.panelImageUrl);
+
+    // O banner é enviado junto ao embed: não é necessário hospedá-lo em outro site.
+    // Se PANEL_IMAGE_URL estiver definida, a URL configurada tem prioridade.
+    const files = [];
+    if (cfg.panelImageUrl) {
+      embed.setImage(cfg.panelImageUrl);
+    } else {
+      embed.setImage('attachment://fpsog-external.png');
+      files.push(new AttachmentBuilder(imageFile, { name: 'fpsog-external.png' }));
+    }
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId('buy:select')
@@ -104,7 +116,7 @@ function createBot({ client, cfg, db, license }) {
         })),
       );
 
-    return { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] };
+    return { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)], files };
   }
 
   function orderPayload(order, plan) {
@@ -154,17 +166,31 @@ function createBot({ client, cfg, db, license }) {
     return { embeds: [embed], components: [row] };
   }
 
+  const FEEDBACK_CHANNEL_ID = '1561083129765306448';
+
   function keyEmbed(order, key) {
     const plan = getPlan(order.plan);
     return new EmbedBuilder()
-      .setColor(COLOR.ok)
-      .setTitle(`Sua key — ${cfg.productName} ${plan?.label ?? ''}`.trim())
-      .setDescription(['```', key, '```'].join('\n'))
+      .setColor(0x777777)
+      .setTitle('Compra confirmada!')
+      .setDescription(`Obrigado por comprar **FpsOg’ External — ${plan?.label ?? order.plan}**!`)
       .addFields(
-        { name: 'Pedido', value: `#${order.id}`, inline: true },
-        { name: 'Duração', value: plan?.duration ?? '—', inline: true },
+        { name: 'Plano', value: plan?.label ?? order.plan, inline: false },
+        { name: 'Valor pago', value: formatBRL(order.price_cents), inline: false },
+        { name: 'Seu produto', value: `\`\`\`\n${key}\n\`\`\``, inline: false },
+        { name: 'ID da compra', value: `\`V-${order.id}\``, inline: false },
+        { name: 'Deixe seu feedback', value: `Gostou da experiência? Deixe sua avaliação em <#${FEEDBACK_CHANNEL_ID}>!`, inline: false },
       )
-      .setFooter({ text: 'O tempo do plano só começa a contar na primeira ativação. Não compartilhe sua key.' });
+      .setImage('attachment://fpsog-external.png')
+      .setFooter({ text: 'O tempo do plano começa na primeira ativação. Não compartilhe sua key.' });
+  }
+
+  function keyMessagePayload(order, key) {
+    const imageFile = path.join(__dirname, '..', 'assets', 'fpsog-external.png');
+    return {
+      embeds: [keyEmbed(order, key)],
+      files: [new AttachmentBuilder(imageFile, { name: 'fpsog-external.png' })],
+    };
   }
 
   /* ───────────── criação do pedido ───────────── */
@@ -243,11 +269,11 @@ function createBot({ client, cfg, db, license }) {
     const channel = await fetchChannel(order.channel_id);
     await removeOrderButtons(order, channel);
 
-    const embed = keyEmbed(order, key);
+    const keyPayload = keyMessagePayload(order, key);
     let dmOk = false;
     try {
       const user = await client.users.fetch(order.user_id);
-      await user.send({ embeds: [embed] });
+      await user.send(keyPayload);
       dmOk = true;
     } catch (err) {
       console.warn(`DM falhou para ${order.user_id} (pedido #${order.id}): ${err.message}`);
@@ -269,7 +295,7 @@ function createBot({ client, cfg, db, license }) {
         await channel?.send({
           content: `<@${order.user_id}>`,
           embeds: [
-            embed,
+            keyEmbed(order, key),
             new EmbedBuilder()
               .setColor(COLOR.warn)
               .setTitle('Seu privado está fechado')
@@ -277,6 +303,7 @@ function createBot({ client, cfg, db, license }) {
                 `Não consegui te enviar por DM, então a key está acima — **copie agora**. Este canal fecha em ${closeMin} min.`,
               ),
           ],
+          files: [new AttachmentBuilder(path.join(__dirname, '..', 'assets', 'fpsog-external.png'), { name: 'fpsog-external.png' })],
         });
       }
     } catch (err) {
